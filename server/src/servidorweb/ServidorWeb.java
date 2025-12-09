@@ -7,22 +7,23 @@ import java.util.concurrent.*;
 
 public class ServidorWeb {
 
-    // Configuración del Pool
-    private static final int HILOS_MAXIMOS = 4; // Límite pequeño para probar rápido
     private int puerto;
+    private int limiteHilos;
     private ThreadPoolExecutor pool;
     public static final String CARPETA_WEB = "www";
 
-    public ServidorWeb(int puerto) {
+    // Constructor modificado para recibir el tamaño del pool
+    public ServidorWeb(int puerto, int limiteHilos) {
         this.puerto = puerto;
-        // Creamos el pool de conexiones (el grupo de trabajadores)
-        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(HILOS_MAXIMOS);
+        this.limiteHilos = limiteHilos;
+        // Creamos el pool con el tamaño que eligió el usuario
+        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(limiteHilos);
 
-        // Crear carpeta base automáticamente si no existe
+        // Crear carpeta base automáticamente
         File directory = new File(CARPETA_WEB);
         if (!directory.exists()) {
             directory.mkdir();
-            System.out.println(">> Carpeta 'www' creada. (Aún está vacía).");
+            System.out.println(">> Carpeta 'www' creada.");
         }
     }
 
@@ -30,7 +31,9 @@ public class ServidorWeb {
         try (ServerSocket serverSocket = new ServerSocket(puerto)) {
             System.out.println("------------------------------------------------");
             System.out.println("Servidor iniciado en puerto: " + puerto);
-            System.out.println("Para probar, ve a: http://localhost:" + puerto + "/index.html");
+            System.out.println("Tamaño del Pool: " + limiteHilos + " hilos.");
+            System.out.println("Punto de saturación (Redirección): " + (limiteHilos / 2) + " hilos activos.");
+            System.out.println("Sitio local: http://localhost:" + puerto + "/index.html");
             System.out.println("------------------------------------------------");
 
             while (true) {
@@ -39,12 +42,11 @@ public class ServidorWeb {
                 // --- LÓGICA DE BALANCEO (El Portero) ---
                 int hilosActivos = pool.getActiveCount();
 
-                // Si el antro está lleno (mitad de capacidad) y NO somos el servidor de respaldo (8081)
-                if (hilosActivos >= (HILOS_MAXIMOS / 2) && puerto != 8081) {
-                    System.out.println(">> ¡SERVIDOR LLENO! (" + hilosActivos + " activos). Redirigiendo al 8081...");
+                // Si superamos la mitad y NO somos el servidor de respaldo (8081)
+                if (hilosActivos >= (limiteHilos / 2) && puerto != 8081) {
+                    System.out.println(">> [ALERTA] Servidor Saturado (" + hilosActivos + " activos). Redirigiendo al 8081...");
                     redirigirPeticion(cliente);
                 } else {
-                    // Si hay espacio, pásale el cliente a un trabajador
                     pool.execute(new ManejadorCliente(cliente));
                 }
             }
@@ -55,7 +57,7 @@ public class ServidorWeb {
 
     private void redirigirPeticion(Socket socket) {
         try (PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
-            // Respuesta HTTP 302 para redireccionar
+            // Respuesta HTTP 302 Found (Redirección temporal)
             String respuesta = "HTTP/1.1 302 Found\r\n" +
                     "Location: http://localhost:8081/index.html\r\n" +
                     "Connection: close\r\n" +
@@ -69,7 +71,7 @@ public class ServidorWeb {
         }
     }
 
-    // --- CLASE DEL TRABAJADOR (Maneja cada conexión) ---
+    // --- CLASE DEL TRABAJADOR ---
     private static class ManejadorCliente implements Runnable {
         private Socket socket;
 
@@ -79,7 +81,7 @@ public class ServidorWeb {
 
         @Override
         public void run() {
-            // RETRASO ARTIFICIAL: 5 segundos para que te dé tiempo de llenar el servidor
+            // RETRASO ARTIFICIAL (Solo para poder probar la saturación manualmente)
             try { Thread.sleep(5000); } catch (InterruptedException e) {}
 
             try (
@@ -87,28 +89,33 @@ public class ServidorWeb {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(bis));
                     OutputStream out = socket.getOutputStream()
             ) {
-                // 1. Leer qué pide el cliente
                 String requestLine = reader.readLine();
                 if (requestLine == null) return;
 
-                System.out.println("[" + Thread.currentThread().getName() + "] Atendiendo: " + requestLine);
+                System.out.println("[" + Thread.currentThread().getName() + "] Petición: " + requestLine);
                 StringTokenizer tokenizer = new StringTokenizer(requestLine);
                 String method = tokenizer.nextToken();
-                String fileName = tokenizer.nextToken().substring(1); // Quitar la barra inicial
+                String fileName = tokenizer.nextToken().substring(1);
 
                 if (fileName.isEmpty()) fileName = "index.html";
 
-                // 2. Leer Encabezados (Para cumplir requisito)
+                // --- 2. LEER ENCABEZADOS (Requisito WhatsApp) ---
                 String headerLine;
                 int contentLength = 0;
                 while (!(headerLine = reader.readLine()).isEmpty()) {
                     if (headerLine.startsWith("Content-Length:")) {
                         contentLength = Integer.parseInt(headerLine.split(":")[1].trim());
                     }
-                    // Aquí podrías imprimir Cookies o User-Agent si quieres
+                    // Demostramos que leemos los headers importantes
+                    else if (headerLine.startsWith("User-Agent:")) {
+                        System.out.println("    -> Navegador detectado: " + headerLine.substring(11).trim());
+                    }
+                    else if (headerLine.startsWith("Cookie:")) {
+                        System.out.println("    -> Cookies: " + headerLine.substring(7).trim());
+                    }
                 }
 
-                // 3. Decidir qué hacer según el método
+                // --- 3. MÉTODOS HTTP ---
                 switch (method) {
                     case "GET":
                         enviarArchivo(fileName, out);
@@ -123,18 +130,21 @@ public class ServidorWeb {
                         borrarArchivo(fileName, out);
                         break;
                     default:
-                        String error = "HTTP/1.1 405 Method Not Allowed\r\n\r\nMetodo no permitido";
-                        out.write(error.getBytes());
+                        enviarRespuesta(out, "405 Method Not Allowed", "<h1>405 Metodo no permitido</h1>");
                 }
 
-            } catch (IOException e) {
+            } catch (Exception e) {
+                // Manejo de error 500 (Requisito WhatsApp)
                 e.printStackTrace();
+                try {
+                    enviarRespuesta(socket.getOutputStream(), "500 Internal Server Error", "<h1>500 Error Interno</h1>");
+                } catch (IOException ex) {}
             } finally {
                 try { socket.close(); } catch (IOException e) {}
             }
         }
 
-        // --- MÉTODOS DE AYUDA ---
+        // --- MÉTODOS AUXILIARES ---
         private void enviarArchivo(String fileName, OutputStream out) throws IOException {
             File file = new File(CARPETA_WEB + File.separator + fileName);
             if (file.exists() && !file.isDirectory()) {
@@ -146,49 +156,62 @@ public class ServidorWeb {
                 out.write(header.getBytes());
                 out.write(fileBytes);
             } else {
-                String error = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n<html><h1>Error 404: Archivo no encontrado</h1></html>";
-                out.write(error.getBytes());
+                enviarRespuesta(out, "404 Not Found", "<h1>404 Archivo no encontrado</h1>");
             }
         }
 
         private void leerCuerpoYResponder(BufferedReader reader, int length, OutputStream out) throws IOException {
             char[] body = new char[length];
             reader.read(body, 0, length);
-            String response = "HTTP/1.1 200 OK\r\n\r\n<html><h1>POST Recibido</h1><p>" + new String(body) + "</p></html>";
-            out.write(response.getBytes());
+            enviarRespuesta(out, "200 OK", "<h1>POST Recibido</h1><p>" + new String(body) + "</p>");
         }
 
         private void guardarArchivo(String fileName, BufferedReader reader, int length, OutputStream out) throws IOException {
             char[] body = new char[length];
             reader.read(body, 0, length);
             try (FileWriter fw = new FileWriter(CARPETA_WEB + File.separator + fileName)) { fw.write(body); }
-            String response = "HTTP/1.1 201 Created\r\n\r\n<html><h1>Archivo creado con PUT</h1></html>";
-            out.write(response.getBytes());
+            enviarRespuesta(out, "201 Created", "<h1>Archivo creado con PUT</h1>");
         }
 
         private void borrarArchivo(String fileName, OutputStream out) throws IOException {
             File file = new File(CARPETA_WEB + File.separator + fileName);
             if (file.exists() && file.delete()) {
-                String response = "HTTP/1.1 200 OK\r\n\r\n<html><h1>Archivo eliminado</h1></html>";
-                out.write(response.getBytes());
+                enviarRespuesta(out, "200 OK", "<h1>Archivo eliminado</h1>");
             } else {
-                String error = "HTTP/1.1 404 Not Found\r\n\r\n<html><h1>No se pudo eliminar</h1></html>";
-                out.write(error.getBytes());
+                enviarRespuesta(out, "404 Not Found", "<h1>No se pudo eliminar</h1>");
             }
         }
 
+        private void enviarRespuesta(OutputStream out, String status, String htmlBody) throws IOException {
+            String response = "HTTP/1.1 " + status + "\r\n" +
+                    "Content-Type: text/html\r\n" +
+                    "Content-Length: " + htmlBody.length() + "\r\n" +
+                    "\r\n" + htmlBody;
+            out.write(response.getBytes());
+        }
+
+        // --- REQUISITO: AL MENOS 4 TIPOS MIME ---
         private String getMimeType(String fileName) {
             if (fileName.endsWith(".html")) return "text/html";
-            if (fileName.endsWith(".jpg")) return "image/jpeg";
+            if (fileName.endsWith(".css")) return "text/css";       // Agregado
+            if (fileName.endsWith(".js")) return "application/javascript"; // Agregado
+            if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) return "image/jpeg";
+            if (fileName.endsWith(".pdf")) return "application/pdf"; // Agregado
             return "text/plain";
         }
     }
 
-    // --- PUNTO DE ARRANQUE ---
+    // --- MAIN ---
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        System.out.print("¿Puerto? (8000 para Principal / 8081 para Respaldo): ");
+
+        System.out.println("--- CONFIGURACION ---");
+        System.out.print("1. ¿Puerto? (8000 Principal / 8081 Respaldo): ");
         int puerto = scanner.nextInt();
-        new ServidorWeb(puerto).iniciar();
+
+        System.out.print("2. ¿Tamaño del Pool de Hilos? (Ej: 4): ");
+        int hilos = scanner.nextInt();
+
+        new ServidorWeb(puerto, hilos).iniciar();
     }
 }
