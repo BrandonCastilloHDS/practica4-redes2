@@ -1,6 +1,133 @@
-<html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Prueba de Servidor Java</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; }
+        .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        .delete-btn { background: #dc3545;
+          margin-top: 2px}
+        .delete-btn:hover { background: #a71d2a; }
+        input[type="text"] { padding: 8px; width: 70%; }
+        pre { background: #eee; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
 <body>
-<h1>Servidor </h1>
-<p>Bienvenido</p>
+
+<h1>Panel de Control Servidor Web</h1>
+
+<div class="card">
+    <h2>1. Prueba GET (Tipos MIME de salida)</h2>
+    <p>El servidor debe saber qué MIME enviar según el archivo.</p>
+    <img src="test.jpg" alt="[Imagen test.jpg no encontrada]" width="100">
+    <br><br>
+    <a href="estilo.css" target="_blank">Probar CSS (text/css)</a> |
+    <a href="script.js" target="_blank">Probar JS (application/javascript)</a>
+</div>
+
+<div class="card">
+    <h2>2. Prueba POST </h2>
+    <p>Envía datos al servidor.</p>
+    <form action="/formulario" method="POST">
+        <input type="text" name="dato" placeholder="Escribe tu nombre aquí...">
+        <button type="submit">Enviar POST</button>
+    </form>
+</div>
+<div class="card">
+    <h2>3. Prueba PUT (Crear Archivo)</h2>
+    <p>Crea un archivo nuevo en la carpeta <code>www</code>.</p>
+
+    <input type="text" id="nombreArchivo" placeholder="Nombre del archivo " style="background:#eef; border:1px solid blue;">
+    <br><br>
+
+    <textarea id="contenidoPut" placeholder="Escribe aquí el contenido del archivo..." rows="4" style="width:90%;"></textarea>
+    <br><br>
+
+    <button onclick="enviarPut()">Crear Archivo (PUT)</button>
+    <p id="respPut"></p>
+</div>
+
+<div class="card">
+    <h2>4. Prueba DELETE (Borrar)</h2>
+    <p>Escribe el nombre del archivo que quieres eliminar de la carpeta .</p>
+    <input type="text" id="archivoBorrar" placeholder="mitarea.txt" style="background:#fee; border:1px solid red;">
+
+    <button class="delete-btn" onclick="enviarDelete()">Borrar Archivo (DELETE)</button>
+    <p id="respDelete"></p>
+</div>
+
+<div class="card" style="border-left: 5px solid green;">
+    <h2>5. Prueba de Subida (Verificar MIME entrante)</h2>
+    <p>Sube un PDF, una imagen o un JSON. <br><b>Mira la consola de Java</b> para ver el header <code>Content-Type</code>.</p>
+
+    <input type="file" id="archivoInput">
+    <button onclick="subirArchivo()">Subir Archivo (POST)</button>
+    <p id="respUpload"></p>
+</div>
+
+<script>
+    async function enviarPut() {
+        const nombre = document.getElementById('nombreArchivo').value;
+        const texto = document.getElementById('contenidoPut').value;
+
+        if (!nombre) {
+            alert("¡Por favor escribe un nombre para el archivo!");
+            return;
+        }
+
+        // Aquí la magia: Usamos el nombre que escribiste en la URL
+        const respuesta = await fetch('/' + nombre, {
+            method: 'PUT',
+            body: texto
+        });
+
+        document.getElementById('respPut').innerText = "Estado: " + respuesta.status + " (Archivo creado)";
+
+        // Limpiamos los campos
+        document.getElementById('contenidoPut').value = "";
+    }
+
+    // DELETE (Borrar)
+
+    async function enviarDelete() {
+        const nombre = document.getElementById('archivoBorrar').value;
+
+        if (!nombre) {
+            alert("Escribe el nombre del archivo que quieres borrar.");
+            return;
+        }
+
+        // Enviamos la orden DELETE a la URL del archivo
+        const respuesta = await fetch('/' + nombre, {
+            method: 'DELETE'
+        });
+
+        const textoResp = await respuesta.text();
+        document.getElementById('respDelete').innerText = "Estado: " + respuesta.status + " - " + textoResp;
+    }
+
+    // --- NUEVA FUNCION PARA SUBIR ARCHIVOS ---
+    async function subirArchivo() {
+        const input = document.getElementById('archivoInput');
+        if(input.files.length === 0) {
+            alert("Selecciona un archivo primero");
+            return;
+        }
+
+        const archivo = input.files[0];
+        // Enviamos el archivo tal cual usando fetch
+        // Esto hará que el navegador ponga automáticamente el Content-Type correcto (ej: image/png)
+        const respuesta = await fetch('/subida-' + archivo.name, {
+            method: 'POST',
+            body: archivo
+        });
+
+        document.getElementById('respUpload').innerText = "Archivo enviado. Revisa la consola Java.";
+    }
+</script>
 </body>
 </html>
