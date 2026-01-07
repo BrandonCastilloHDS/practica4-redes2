@@ -1,13 +1,12 @@
 package servidorweb;
-
 import java.io.*;
-import java.net.*;
+import java.net.*; //sockets y conexiones de red
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.*; //manejar el Pool de hikos
 import java.awt.Desktop;
 
 public class ServidorWeb {
-
+//receta de cocina
     private int puerto;
     private int limiteHilos;
     private ThreadPoolExecutor pool;
@@ -17,7 +16,7 @@ public class ServidorWeb {
     public ServidorWeb(int puerto, int limiteHilos) {
         this.puerto = puerto;
         this.limiteHilos = limiteHilos;
-        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(limiteHilos);
+        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(limiteHilos); //cresr el hilo del tamaño ingresado
 
 
         File directory = new File(CARPETA_WEB);
@@ -26,26 +25,28 @@ public class ServidorWeb {
         }
     }
 
-    // Método para iniciar el servidor
+
     public void iniciar() {
+
         try (ServerSocket serverSocket = new ServerSocket(puerto)) {
             if (puerto == 8000) {
-                System.out.println("=================================================");
+                System.out.println(" ->");
                 System.out.println(" SERVIDOR PRINCIPAL (8000) INICIADO");
                 System.out.println(" Pool Configurado: " + limiteHilos + " hilos.");
-                System.out.println(" Regla: Al llegar a " + (limiteHilos/2) + " activos -> Redirige al 8081.");
-                System.out.println("=================================================");
+                System.out.println(" ADVERTENCIA: Al llegar a " + (limiteHilos/2) + " activos -> Redirige al 8081.");
+
             } else {
-                System.out.println(">> [SISTEMA] Servidor de Respaldo (8081) listo.");
+                System.out.println(">> Servidor de Respaldo (8081) listo.");
             }
 
+
             while (true) {
-                Socket cliente = serverSocket.accept();
+                Socket cliente = serverSocket.accept(); //aceptamos y detenemos a entrar un cliente
                 int hilosActivos = pool.getActiveCount();
 
                 // Para redirigir cuando se sobre pase la mitad de los hilos
                 if (hilosActivos >= (limiteHilos / 2) && puerto != 8081) {
-                    System.out.println(">> [ALERTA 8000] Saturado (" + hilosActivos + " activos). ¡Redirigiendo al 8081!");
+                    System.out.println(">> [ALERTA 8000] Saturado (" + hilosActivos + " activos). ->Accediendo al respaldo");
                     redirigirPeticion(cliente, "http://localhost:8081/index.html");
                 } else {
                     pool.execute(new ManejadorCliente(cliente));
@@ -57,6 +58,7 @@ public class ServidorWeb {
     }
 
     // Redirección
+    //tranforma a bytes
     private void redirigirPeticion(Socket socket, String ubicacion) {
         try (PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
             String respuesta = "HTTP/1.1 302 Found\r\n" +
@@ -72,7 +74,7 @@ public class ServidorWeb {
         }
     }
 
-    // --- CLASE INTERNA: MANEJADOR DEL CLIENTE ---
+    //manejador del cliente
     private static class ManejadorCliente implements Runnable {
         private Socket socket;
 
@@ -83,9 +85,10 @@ public class ServidorWeb {
         @Override
         public void run() {
 
-            try { Thread.sleep(500); } catch (InterruptedException e) {}
+            try { Thread.sleep(10000); } catch (InterruptedException e) {}
 
             try (
+                    //configuración de canales
                     BufferedInputStream bis = new BufferedInputStream(socket.getInputStream());
                     BufferedReader reader = new BufferedReader(new InputStreamReader(bis));
                     OutputStream out = socket.getOutputStream()
@@ -98,23 +101,19 @@ public class ServidorWeb {
                 // 1. RECURSO / DIRECCIÓN
                 System.out.println("RECURSO SOLICITADO: " + requestLine);
 
-                System.out.println("--- CABECERAS (HEADERS) ---");
+                System.out.println("->(HEADERS)<-");
                 String headerLine;
                 while (!(headerLine = reader.readLine()).isEmpty()) {
-                    // Imprimimos TODO lo que llega. Esto mostrará:
-                    // Host, Connection, User-Agent, Accept, Accept-Encoding,
-                    // Accept-Language, Upgrade-Insecure-Requests, Cookie, etc.
                     System.out.println(headerLine);
                 }
-                System.out.println("---------------------------");
-                // ---------------------------------------------------------
+
 
                 StringTokenizer tokenizer = new StringTokenizer(requestLine);
-                String method = tokenizer.nextToken();
+                String method = tokenizer.nextToken(); //obtiene si  es GET , POST, PUT , DELETE
                 String path = tokenizer.nextToken().substring(1);
                 if (path.isEmpty()) path = "index.html";
 
-                // --- 2. RUTAS PARA CÓDIGOS DE ESTADO Y TIPOS MIME ---
+               //Para los MIME
 
                 if (path.equals("redirect")) {
                     enviarRespuesta(out, "302 Found", "text/html", "<h1>Redirigiendo...</h1>", "Location: /\r\n");
@@ -143,7 +142,7 @@ public class ServidorWeb {
 
                     System.out.println(">> Archivo GUARDADO: " + nuevoArchivo.getAbsolutePath());
                     enviarRespuesta(out, "201 Created", "text/plain", "Archivo " + path + " creado con exito.", null);
-                    
+
                 } else if (method.equals("DELETE")) {
 
                     File archivoABorrar = new File(CARPETA_WEB + File.separator + path);
@@ -161,7 +160,7 @@ public class ServidorWeb {
                     } else {
                         enviarRespuesta(out, "404 Not Found", "text/plain", "El archivo no existe, no se puede borrar.", null);
                     }
-                    
+
                 } else {
                     enviarArchivo(path, out);
                 }
@@ -169,6 +168,7 @@ public class ServidorWeb {
             } catch (Exception e) {
                 e.printStackTrace();
             } finally {
+                //LIEBRAR PARA QUE OTRO CLIENTE LO PUEDA OCUPAR
                 try { socket.close(); } catch (IOException e) {}
             }
         }
@@ -188,10 +188,7 @@ public class ServidorWeb {
             File file = new File(CARPETA_WEB + File.separator + fileName);
 
             if (file.exists()) {
-
-                // AQUÍ SE DEFINEN LOS TIPOS MIME
-                // -----------------------------------------------------------
-                String mimeType = "text/plain"; // Por defecto, texto plano
+                String mimeType = "text/plain";
 
                 if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
                     mimeType = "text/html";
@@ -236,7 +233,7 @@ public class ServidorWeb {
     // --- MAIN PRINCIPAL ---
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        int poolSize = 5;
+        int poolSize = 0;
 
         try {
             System.out.print("Ingrese el numero de pools (hilos): ");

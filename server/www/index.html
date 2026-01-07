@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Prueba de Servidor Java</title>
+    <title>Práctica 4</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; }
         .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -37,7 +37,7 @@
     </form>
 </div>
 <div class="card">
-    <h2>3. Prueba PUT (Crear Archivo)</h2>
+    <h2>3. PUT (Crear Archivo)</h2>
     <p>Crea un archivo nuevo en la carpeta <code>www</code>.</p>
 
     <input type="text" id="nombreArchivo" placeholder="Nombre del archivo " style="background:#eef; border:1px solid blue;">
@@ -51,7 +51,7 @@
 </div>
 
 <div class="card">
-    <h2>4. Prueba DELETE (Borrar)</h2>
+    <h2>4. DELETE</h2>
     <p>Escribe el nombre del archivo que quieres eliminar de la carpeta .</p>
     <input type="text" id="archivoBorrar" placeholder="mitarea.txt" style="background:#fee; border:1px solid red;">
 
@@ -60,11 +60,11 @@
 </div>
 
 <div class="card" style="border-left: 5px solid green;">
-    <h2>5. Prueba de Subida (Verificar MIME entrante)</h2>
+    <h2>5. SUBIR UN ARCHIVO</h2> <!--put-->
     <p>Sube un PDF, una imagen o un JSON.</p>
 
     <input type="file" id="archivoInput">
-    <button onclick="subirArchivo()">Subir Archivo (POST)</button>
+    <button onclick="subirArchivo()">Subir Archivo </button>
     <p id="respUpload"></p>
 </div>
 
@@ -109,7 +109,7 @@
         document.getElementById('respDelete').innerText = "Estado: " + respuesta.status + " - " + textoResp;
     }
 
-    // --- NUEVA FUNCION PARA SUBIR ARCHIVOS ---
+
     async function subirArchivo() {
         const input = document.getElementById('archivoInput');
         if(input.files.length === 0) {
